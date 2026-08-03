@@ -1,0 +1,52 @@
+# --- Secrets -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / Next.js ----------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# --- Data & models (large, regenerable) --------------------------------------
+data/uploads/
+data/models/
+data/qdrant/
+data/postgres/
+*.sqlite3
+*.db
+
+# --- Eval artifacts ----------------------------------------------------------
+eval/results/
+eval/.cache/
+
+# --- Loose documents at the repo root ----------------------------------------
+# Personal/sample files dropped in for manual testing. Fixtures that belong in
+# the repo live under backend/tests/fixtures/ or eval/corpus/.
+/*.pdf
+/*.docx
+
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

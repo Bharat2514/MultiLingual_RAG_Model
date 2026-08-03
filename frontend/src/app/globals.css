@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+/*
+ * Palette. Contrast ratios against their paired background were checked to
+ * meet WCAG AA (NFR-10): body text ≥ 7:1, muted text ≥ 4.6:1, and every
+ * status colour ≥ 4.5:1 in both themes.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-devanagari: var(--font-devanagari), var(--font-inter), sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-canvas: oklch(0.99 0.002 250);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.975 0.004 250);
+  --color-border: oklch(0.915 0.006 250);
+  --color-border-strong: oklch(0.86 0.008 250);
+
+  --color-ink: oklch(0.22 0.012 250);
+  --color-ink-muted: oklch(0.47 0.012 250);
+  --color-ink-faint: oklch(0.6 0.01 250);
+
+  --color-accent: oklch(0.52 0.16 258);
+  --color-accent-hover: oklch(0.46 0.17 258);
+  --color-accent-soft: oklch(0.955 0.022 258);
+  --color-accent-ink: oklch(0.4 0.16 258);
+
+  --color-success: oklch(0.52 0.13 155);
+  --color-success-soft: oklch(0.955 0.03 155);
+  --color-warning: oklch(0.55 0.13 75);
+  --color-warning-soft: oklch(0.96 0.045 85);
+  --color-danger: oklch(0.53 0.19 22);
+  --color-danger-soft: oklch(0.96 0.03 22);
+
+  --radius-card: 0.875rem;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  /* The toggle stamps data-theme on <html>; it must beat the media query. */
+  :root[data-theme="dark"],
+  :root[data-theme="dark"] * {
+    color-scheme: dark;
+  }
+
+  :root[data-theme="dark"] {
+    --color-canvas: oklch(0.17 0.008 255);
+    --color-surface: oklch(0.213 0.009 255);
+    --color-surface-2: oklch(0.245 0.01 255);
+    --color-border: oklch(0.3 0.012 255);
+    --color-border-strong: oklch(0.38 0.014 255);
+
+    --color-ink: oklch(0.955 0.004 250);
+    --color-ink-muted: oklch(0.75 0.012 250);
+    --color-ink-faint: oklch(0.62 0.012 250);
+
+    --color-accent: oklch(0.72 0.14 258);
+    --color-accent-hover: oklch(0.79 0.13 258);
+    --color-accent-soft: oklch(0.3 0.06 258);
+    --color-accent-ink: oklch(0.84 0.1 258);
+
+    --color-success: oklch(0.75 0.15 155);
+    --color-success-soft: oklch(0.29 0.06 155);
+    --color-warning: oklch(0.79 0.14 80);
+    --color-warning-soft: oklch(0.31 0.06 75);
+    --color-danger: oklch(0.72 0.16 22);
+    --color-danger-soft: oklch(0.31 0.08 22);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --color-canvas: oklch(0.17 0.008 255);
+      --color-surface: oklch(0.213 0.009 255);
+      --color-surface-2: oklch(0.245 0.01 255);
+      --color-border: oklch(0.3 0.012 255);
+      --color-border-strong: oklch(0.38 0.014 255);
+
+      --color-ink: oklch(0.955 0.004 250);
+      --color-ink-muted: oklch(0.75 0.012 250);
+      --color-ink-faint: oklch(0.62 0.012 250);
+
+      --color-accent: oklch(0.72 0.14 258);
+      --color-accent-hover: oklch(0.79 0.13 258);
+      --color-accent-soft: oklch(0.3 0.06 258);
+      --color-accent-ink: oklch(0.84 0.1 258);
+
+      --color-success: oklch(0.75 0.15 155);
+      --color-success-soft: oklch(0.29 0.06 155);
+      --color-warning: oklch(0.79 0.14 80);
+      --color-warning-soft: oklch(0.31 0.06 75);
+      --color-danger: oklch(0.72 0.16 22);
+      --color-danger-soft: oklch(0.31 0.08 22);
+    }
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+   * Devanagari sits on a taller body and needs more leading than Latin, or
+   * matras collide with the line above. Applied wherever mixed script can
+   * appear: answers, chunk snippets, filenames (NFR-10).
+   */
+  .script-auto {
+    font-family: var(--font-devanagari);
+    line-height: 1.85;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Thin, theme-aware scrollbars; the chat column scrolls constantly. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 99px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .animate-rise {
+    animation: rise 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .animate-pulse-soft {
+    animation: pulse-soft 1.6s ease-in-out infinite;
+  }
+
+  /* The streaming cursor. */
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  .caret::after,
+  /* Markdown answers render as block children, so the cursor has to attach to
+     the last of them — on the wrapper it would drop onto its own line below. */
+  .caret-blocks > :last-child::after {
+    content: "";
+    display: inline-block;
+    width: 0.5ch;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: -0.16em;
+    background: var(--color-accent);
+    animation: blink 1s step-end infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rise,
+    .animate-pulse-soft,
+    .caret::after,
+    .caret-blocks > :last-child::after {
+      animation: none;
+    }
+  }
+}

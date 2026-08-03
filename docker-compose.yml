@@ -1,0 +1,144 @@
+# =============================================================================
+# PolyDoc — local stack.
+#
+#   make infra   -> Qdrant + Postgres + Redis only (run API/worker on the host
+#                   so the embedding + reranker models get Apple MPS)
+#   make up      -> the full stack in containers (CPU torch, reproducible)
+#
+# Profiles keep those two modes in one file: infra services have no profile and
+# always start; app services are behind the `app` profile.
+# =============================================================================
+
+name: polydoc
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: polydoc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: polydoc
+      POSTGRES_PASSWORD: polydoc
+      POSTGRES_DB: polydoc
+      # Devanagari-safe collation for filenames and chunk text.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polydoc -d polydoc"]
+      <<: *healthcheck-defaults
+
+  redis:
+    image: redis:7-alpine
+    container_name: polydoc-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      <<: *healthcheck-defaults
+
+  qdrant:
+    # Keep in lockstep with `qdrant-client` in backend/pyproject.toml — the
+    # client refuses a >1 minor-version skew, and the Query API used for hybrid
+    # RRF search (Batch 3) is version-sensitive.
+    image: qdrant/qdrant:v1.18.1
+    container_name: polydoc-qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # The Qdrant image is distroless — no curl/wget. Bash's /dev/tcp probe works.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      <<: *healthcheck-defaults
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: api
+    container_name: polydoc-api
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DB__URL: postgresql+asyncpg://polydoc:polydoc@postgres:5432/polydoc
+      REDIS__URL: redis://redis:6379/0
+      QDRANT__URL: http://qdrant:6333
+      STORAGE__LOCAL_DIR: /app/data/uploads
+      EMBEDDING__CACHE_DIR: /app/data/models
+      EMBEDDING__DEVICE: cpu
+      RERANKER__DEVICE: cpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    container_name: polydoc-worker
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DB__URL: postgresql+asyncpg://polydoc:polydoc@postgres:5432/polydoc
+      REDIS__URL: redis://redis:6379/0
+      QDRANT__URL: http://qdrant:6333
+      STORAGE__LOCAL_DIR: /app/data/uploads
+      EMBEDDING__CACHE_DIR: /app/data/models
+      EMBEDDING__DEVICE: cpu
+      RERANKER__DEVICE: cpu
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined at build time, so this is a build arg rather
+        # than a runtime env var. It is the URL the *browser* uses, which is why
+        # it points at localhost and not the `api` service name.
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+    container_name: polydoc-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  app_data:
