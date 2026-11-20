@@ -21,4 +21,11 @@ CORPUS_DIR = EVAL_ROOT / "corpus"
 GOLD_DIR = EVAL_ROOT / "gold"
 RESULTS_DIR = EVAL_ROOT / "results"
 
-__all__ = ["BACKEND_ROOT", "CORPUS_DIR", "EVAL_ROOT", "GOLD_DIR", "REPO_ROOT", "RESULTS_DIR"]
+__all__ = [
+    "BACKEND_ROOT",
+    "CORPUS_DIR",
+    "EVAL_ROOT",
+    "GOLD_DIR",
+    "REPO_ROOT",
+    "RESULTS_DIR",
+]

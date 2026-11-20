@@ -90,7 +90,9 @@ def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float,
     phat = successes / total
     denominator = 1 + z**2 / total
     centre = (phat + z**2 / (2 * total)) / denominator
-    spread = z * math.sqrt(phat * (1 - phat) / total + z**2 / (4 * total**2)) / denominator
+    spread = (
+        z * math.sqrt(phat * (1 - phat) / total + z**2 / (4 * total**2)) / denominator
+    )
     return (max(0.0, centre - spread), min(1.0, centre + spread))
 
 

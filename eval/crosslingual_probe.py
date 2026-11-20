@@ -42,14 +42,24 @@ CORPUS = [
         "rules_en.pdf",
         2,
     ),
-    ("en", "A penalty of five thousand rupees applies to late submissions.", "rules_en.pdf", 3),
+    (
+        "en",
+        "A penalty of five thousand rupees applies to late submissions.",
+        "rules_en.pdf",
+        3,
+    ),
     (
         "hi",
         "राष्ट्रीय शिक्षा नीति के अंतर्गत प्राथमिक विद्यालयों में मातृभाषा में शिक्षण अनिवार्य किया गया है।",
         "policy_hi.pdf",
         1,
     ),
-    ("hi", "सभी सरकारी कर्मचारियों को प्रतिवर्ष संपत्ति का विवरण प्रस्तुत करना होगा।", "policy_hi.pdf", 2),
+    (
+        "hi",
+        "सभी सरकारी कर्मचारियों को प्रतिवर्ष संपत्ति का विवरण प्रस्तुत करना होगा।",
+        "policy_hi.pdf",
+        2,
+    ),
     ("hi", "पेंशन के लिए न्यूनतम बीस वर्ष की सेवा आवश्यक है।", "policy_hi.pdf", 3),
 ]
 
@@ -155,7 +165,11 @@ async def main() -> int:
     ok = sum(at3["hybrid"]) >= len(PROBES) - 1 and reranked_hits >= len(PROBES) - 1
     print(
         "\n"
-        + ("PASS: cross-lingual retrieval works" if ok else "FAIL: cross-lingual recall too low")
+        + (
+            "PASS: cross-lingual retrieval works"
+            if ok
+            else "FAIL: cross-lingual recall too low"
+        )
     )
     return 0 if ok else 1
 

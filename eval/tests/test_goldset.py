@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from app.core.config import settings
+from app.retrieval.vectorstore.base import PendingChunk
 from harness.corpus import CorpusDocument, EvalCorpus, load_corpus, normalize
 from harness.goldset import (
     GoldQuestion,
@@ -14,9 +16,6 @@ from harness.goldset import (
     load_goldset,
     validate,
 )
-
-from app.core.config import settings
-from app.retrieval.vectorstore.base import PendingChunk
 
 
 def _chunk(chunk_id: str, text: str, doc: str = "d1") -> PendingChunk:
@@ -89,7 +88,9 @@ def test_a_question_with_no_anchors_matches_nothing():
 
 
 def test_validate_resolves_anchors_to_chunk_ids():
-    corpus = _corpus([_chunk("c1", "pension needs twenty years"), _chunk("c2", "unrelated")])
+    corpus = _corpus(
+        [_chunk("c1", "pension needs twenty years"), _chunk("c2", "unrelated")]
+    )
     gold = GoldSet([_question(["twenty years"])])
     validate(gold, corpus)
     assert gold.questions[0].relevant_chunk_ids == {"c1"}
@@ -112,7 +113,9 @@ def test_validate_rejects_an_anchor_that_matches_every_chunk():
 
 def test_validate_rejects_an_adversarial_question_carrying_anchors():
     corpus = _corpus([_chunk("c1", "pension needs twenty years")])
-    gold = GoldSet([_question(["twenty years"], kind=QueryKind.ADVERSARIAL, answerable=False)])
+    gold = GoldSet(
+        [_question(["twenty years"], kind=QueryKind.ADVERSARIAL, answerable=False)]
+    )
     with pytest.raises(ValueError, match="must not carry anchors"):
         validate(gold, corpus)
 
@@ -138,7 +141,9 @@ def test_load_goldset_rejects_duplicate_ids(tmp_path):
         "answer": "a",
         "expect_language": "en",
     }
-    (tmp_path / "a.jsonl").write_text(json.dumps(record) + "\n" + json.dumps(record) + "\n")
+    (tmp_path / "a.jsonl").write_text(
+        json.dumps(record) + "\n" + json.dumps(record) + "\n"
+    )
     with pytest.raises(ValueError, match="duplicate question id"):
         load_goldset(tmp_path)
 

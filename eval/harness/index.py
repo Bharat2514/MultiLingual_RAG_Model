@@ -91,7 +91,9 @@ async def ensure_index(
             client = store._get_client()
             await client.delete_collection(collection)
             await store.ensure_collection()
-        service = RetrievalService(embedder=embedder, store=store, reranker=NoOpReranker())
+        service = RetrievalService(
+            embedder=embedder, store=store, reranker=NoOpReranker()
+        )
         await service.index_chunks(corpus.chunks)
 
     return store

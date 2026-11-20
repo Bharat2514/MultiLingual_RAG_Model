@@ -154,7 +154,9 @@ def _coerce(raw: dict, source: Path) -> GoldQuestion:
             notes=raw.get("notes", ""),
         )
     except (KeyError, ValueError) as exc:
-        raise ValueError(f"{source.name}: bad gold record {raw.get('id', '?')}: {exc}") from exc
+        raise ValueError(
+            f"{source.name}: bad gold record {raw.get('id', '?')}: {exc}"
+        ) from exc
 
 
 def load_goldset(directory: Path | None = None) -> GoldSet:
@@ -163,7 +165,9 @@ def load_goldset(directory: Path | None = None) -> GoldSet:
     seen: set[str] = set()
 
     for path in sorted(directory.glob("*.jsonl")):
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for lineno, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
             line = line.strip()
             if not line or line.startswith("//"):
                 continue
@@ -173,7 +177,9 @@ def load_goldset(directory: Path | None = None) -> GoldSet:
                 raise ValueError(f"{path.name}:{lineno}: invalid JSON: {exc}") from exc
             question = _coerce(raw, path)
             if question.id in seen:
-                raise ValueError(f"{path.name}:{lineno}: duplicate question id {question.id!r}")
+                raise ValueError(
+                    f"{path.name}:{lineno}: duplicate question id {question.id!r}"
+                )
             seen.add(question.id)
             questions.append(question)
 
@@ -194,7 +200,9 @@ class ValidationReport:
         return not self.problems
 
 
-def validate(gold: GoldSet, corpus: EvalCorpus, *, strict: bool = True) -> ValidationReport:
+def validate(
+    gold: GoldSet, corpus: EvalCorpus, *, strict: bool = True
+) -> ValidationReport:
     """Resolve every question's anchors against the chunked corpus.
 
     Populates `relevant_chunk_ids` in place, which is what the retrieval metrics
@@ -209,7 +217,9 @@ def validate(gold: GoldSet, corpus: EvalCorpus, *, strict: bool = True) -> Valid
     for question in gold.questions:
         if not question.answerable:
             if question.anchors:
-                problems.append(f"{question.id}: adversarial question must not carry anchors")
+                problems.append(
+                    f"{question.id}: adversarial question must not carry anchors"
+                )
             question.relevant_chunk_ids = set()
             continue
 

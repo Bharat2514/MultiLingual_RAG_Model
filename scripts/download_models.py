@@ -23,7 +23,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.core.config import settings
 
-GREEN, RED, BLUE, DIM, RESET = "\033[0;32m", "\033[0;31m", "\033[0;34m", "\033[2m", "\033[0m"
+GREEN, RED, BLUE, DIM, RESET = (
+    "\033[0;32m",
+    "\033[0;31m",
+    "\033[0;34m",
+    "\033[2m",
+    "\033[0m",
+)
 
 # Everything the PyTorch loader ignores. `onnx/` alone is 2.27 GB on bge-m3.
 IGNORE = [
@@ -41,7 +47,9 @@ IGNORE = [
 
 
 def human(num_bytes: int) -> str:
-    return f"{num_bytes / 1e9:.2f} GB" if num_bytes >= 1e9 else f"{num_bytes / 1e6:.0f} MB"
+    return (
+        f"{num_bytes / 1e9:.2f} GB" if num_bytes >= 1e9 else f"{num_bytes / 1e6:.0f} MB"
+    )
 
 
 def fetch(repo_id: str) -> bool:
@@ -63,7 +71,9 @@ def fetch(repo_id: str) -> bool:
     # HF stores real bytes in blobs/ and symlinks them into snapshots/; count
     # only the blobs so the reported size matches actual disk usage.
     size = sum(
-        f.stat().st_size for f in Path(path).rglob("*") if f.is_file() and not f.is_symlink()
+        f.stat().st_size
+        for f in Path(path).rglob("*")
+        if f.is_file() and not f.is_symlink()
     )
     print(f"{GREEN}✓{RESET} {repo_id} — {human(size)} in {time.time() - started:.0f}s")
     print(f"  {DIM}{path}{RESET}")
@@ -100,9 +110,15 @@ def main() -> int:
     for repo in repos:
         ok = fetch(repo) and ok
 
-    total = sum(f.stat().st_size for f in cache.rglob("*") if f.is_file() and not f.is_symlink())
+    total = sum(
+        f.stat().st_size for f in cache.rglob("*") if f.is_file() and not f.is_symlink()
+    )
     print(f"\n  cache size: {human(total)}")
-    print(f"{GREEN}✓ Models ready.{RESET}" if ok else f"{RED}✗ Some downloads failed.{RESET}")
+    print(
+        f"{GREEN}✓ Models ready.{RESET}"
+        if ok
+        else f"{RED}✗ Some downloads failed.{RESET}"
+    )
     return 0 if ok else 1
 
 

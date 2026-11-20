@@ -36,30 +36,49 @@ logging.disable(logging.INFO)
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="run_eval", description=__doc__)
-    parser.add_argument("--arms", nargs="*", default=None, help="Ablation arm ids (default: all).")
+    parser.add_argument(
+        "--arms", nargs="*", default=None, help="Ablation arm ids (default: all)."
+    )
     parser.add_argument(
         "--embedder",
         choices=("bge", "mock"),
         default="bge",
         help="`mock` runs without downloading models — wiring check only, not a result.",
     )
-    parser.add_argument("--limit", type=int, default=0, help="Stratified subset of N questions.")
-    parser.add_argument("--top-k", type=int, default=0, help="Candidates before rerank.")
-    parser.add_argument("--generation", action="store_true", help="Also run the answer pipeline.")
-    parser.add_argument("--judge", action="store_true", help="Score answers with an LLM judge.")
     parser.add_argument(
-        "--sweep", action="store_true", help="Chunk size/overlap sweep (re-indexes per arm)."
+        "--limit", type=int, default=0, help="Stratified subset of N questions."
     )
-    parser.add_argument("--force-index", action="store_true", help="Rebuild the vector index.")
+    parser.add_argument(
+        "--top-k", type=int, default=0, help="Candidates before rerank."
+    )
+    parser.add_argument(
+        "--generation", action="store_true", help="Also run the answer pipeline."
+    )
+    parser.add_argument(
+        "--judge", action="store_true", help="Score answers with an LLM judge."
+    )
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Chunk size/overlap sweep (re-indexes per arm).",
+    )
+    parser.add_argument(
+        "--force-index", action="store_true", help="Rebuild the vector index."
+    )
     parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Check the gold set resolves against the corpus and exit. Needs no models.",
     )
     parser.add_argument(
-        "--out", type=Path, default=RESULTS_DIR / "latest.json", help="JSON results path."
+        "--out",
+        type=Path,
+        default=RESULTS_DIR / "latest.json",
+        help="JSON results path.",
     )
-    parser.add_argument("--markdown", type=Path, default=None, help="Write a Markdown report here.")
+    parser.add_argument(
+        "--markdown", type=Path, default=None, help="Write a Markdown report here."
+    )
     parser.add_argument(
         "--baseline", type=Path, default=None, help="Compare against this results JSON."
     )
@@ -79,7 +98,9 @@ def render_ablations(results: list[ArmResult]) -> str:
     # Deltas are against dense-only, which is the arm every other one adds a
     # stage to. Falling back to the first arm keeps `--arms hybrid_rerank` from
     # crashing, though the column then compares a row with itself.
-    reference = next((r for r in results if r.arm.is_baseline), results[0] if results else None)
+    reference = next(
+        (r for r in results if r.arm.is_baseline), results[0] if results else None
+    )
     baseline = reference.summary.hit_at_5 if reference else None
     rows = []
     for result in results:
@@ -142,7 +163,9 @@ def render_hinglish_ablation(results: list[ArmResult]) -> str | None:
     +4 overall.
     """
     with_norm = next((r for r in results if r.arm.id == SHIPPED_ARM), None)
-    without = next((r for r in results if r.arm.id == "hybrid_rerank_no_hinglish"), None)
+    without = next(
+        (r for r in results if r.arm.id == "hybrid_rerank_no_hinglish"), None
+    )
     if not with_norm or not without:
         return None
 
@@ -156,7 +179,13 @@ def render_hinglish_ablation(results: list[ArmResult]) -> str | None:
     return table(
         ["configuration", "n", "Hit@1", "Hit@5", "MRR"],
         [
-            ["with Hinglish normalisation", str(a.n), pct(a.hit_at_1), pct(a.hit_at_5), pct(a.mrr)],
+            [
+                "with Hinglish normalisation",
+                str(a.n),
+                pct(a.hit_at_1),
+                pct(a.hit_at_5),
+                pct(a.mrr),
+            ],
             [
                 "without (romanized query only)",
                 str(b.n),
@@ -179,23 +208,47 @@ def render_generation(report: GenerationReport, *, judged: bool) -> str:
     inp, out = report.mean_tokens
     rows = [
         ["Language fidelity (FR-21)", pct(report.language_fidelity), "≥ 0.95"],
-        ["Anti-hallucination (abstention accuracy)", pct(report.abstention_accuracy), "≥ 0.95"],
-        ["  └ abstention recall (adversarial refused)", pct(report.abstention_recall), "—"],
-        ["  └ abstention precision (refusals correct)", pct(report.abstention_precision), "—"],
+        [
+            "Anti-hallucination (abstention accuracy)",
+            pct(report.abstention_accuracy),
+            "≥ 0.95",
+        ],
+        [
+            "  └ abstention recall (adversarial refused)",
+            pct(report.abstention_recall),
+            "—",
+        ],
+        [
+            "  └ abstention precision (refusals correct)",
+            pct(report.abstention_precision),
+            "—",
+        ],
         ["  └ false abstention on answerable", pct(report.false_abstention), "—"],
         ["Grounded answers (citation resolved)", pct(report.grounded_rate), "—"],
-        ["Citation points at a passage with the answer", pct(report.citation_accuracy), "—"],
+        [
+            "Citation points at a passage with the answer",
+            pct(report.citation_accuracy),
+            "—",
+        ],
     ]
     if judged:
         rows.extend(
             [
-                ["RAGAS-equivalent faithfulness", pct(report.judged("faithfulness")), "≥ 0.85"],
+                [
+                    "RAGAS-equivalent faithfulness",
+                    pct(report.judged("faithfulness")),
+                    "≥ 0.85",
+                ],
                 [
                     "RAGAS-equivalent answer relevancy",
                     pct(report.judged("answer_relevancy")),
                     "≥ 0.85",
                 ],
-                ["Answer correctness vs reference", pct(report.judged("correctness")), "—"],
+                [
+                    "Answer correctness vs reference",
+                    pct(report.judged("correctness")),
+                    "—",
+                ],
                 ["Context precision", pct(report.judged("context_precision")), "—"],
                 ["  └ answers successfully judged", str(report.judge_coverage), "—"],
             ]
@@ -211,7 +264,9 @@ def render_generation(report: GenerationReport, *, judged: bool) -> str:
         ]
     )
     if report.errors:
-        rows.append(["Provider errors (excluded from means)", str(len(report.errors)), "—"])
+        rows.append(
+            ["Provider errors (excluded from means)", str(len(report.errors)), "—"]
+        )
     return table(["metric", "value", "target"], rows, align_right_from=1)
 
 
@@ -241,7 +296,9 @@ async def run(args: argparse.Namespace) -> int:
     # The stub embedder pairs with the stub reranker. Loading a 2.2 GB
     # cross-encoder to rerank hash-vector candidates costs minutes and cannot
     # make the mock numbers mean anything — `--embedder mock` is a wiring check.
-    needs_rerank = (any(a.rerank for a in arms) or args.generation) and args.embedder != "mock"
+    needs_rerank = (
+        any(a.rerank for a in arms) or args.generation
+    ) and args.embedder != "mock"
 
     print(f"loading embedder ({args.embedder}) ...", flush=True)
     embedder = build_embedder(args.embedder)
@@ -262,7 +319,9 @@ async def run(args: argparse.Namespace) -> int:
         result = await run_arm(arm, gold, corpus, backends, top_k=top_k)
         results.append(result)
         s = result.summary
-        print(f"Hit@5 {s.hit_at_5:.3f}   MRR {s.mrr:.3f}   ({time.time() - arm_started:.0f}s)")
+        print(
+            f"Hit@5 {s.hit_at_5:.3f}   MRR {s.mrr:.3f}   ({time.time() - arm_started:.0f}s)"
+        )
 
     print("\n" + render_ablations(results) + "\n")
 
@@ -280,7 +339,9 @@ async def run(args: argparse.Namespace) -> int:
     ]
     hinglish = render_hinglish_ablation(results)
     if hinglish:
-        sections.append(("Hinglish normalisation ablation (Hinglish questions only)", hinglish))
+        sections.append(
+            ("Hinglish normalisation ablation (Hinglish questions only)", hinglish)
+        )
 
     print(sections[1][0] + "\n" + sections[1][1] + "\n")
     print(sections[2][0] + "\n" + sections[2][1] + "\n")
@@ -305,7 +366,9 @@ async def run(args: argparse.Namespace) -> int:
             judge_provider = get_provider()
             print(f"judge   : {judge_provider.name}/{judge_provider.model}")
 
-        print(f"running end-to-end generation over {len(gold)} questions ...", flush=True)
+        print(
+            f"running end-to-end generation over {len(gold)} questions ...", flush=True
+        )
         done = 0
 
         def progress(_question, _report) -> None:
@@ -424,10 +487,18 @@ async def run_sweep(args: argparse.Namespace) -> int:
     # model, and `replace` raises on one rather than returning a modified copy.
     base = settings.chunking
     grid = [
-        base.model_copy(update={"target_tokens": 250, "min_tokens": 100, "max_tokens": 400}),
-        base.model_copy(update={"target_tokens": 400, "min_tokens": 150, "max_tokens": 600}),
-        base.model_copy(update={"target_tokens": 550, "min_tokens": 200, "max_tokens": 800}),
-        base.model_copy(update={"target_tokens": 750, "min_tokens": 300, "max_tokens": 1000}),
+        base.model_copy(
+            update={"target_tokens": 250, "min_tokens": 100, "max_tokens": 400}
+        ),
+        base.model_copy(
+            update={"target_tokens": 400, "min_tokens": 150, "max_tokens": 600}
+        ),
+        base.model_copy(
+            update={"target_tokens": 550, "min_tokens": 200, "max_tokens": 800}
+        ),
+        base.model_copy(
+            update={"target_tokens": 750, "min_tokens": 300, "max_tokens": 1000}
+        ),
         base.model_copy(
             update={
                 "target_tokens": 550,
@@ -482,7 +553,9 @@ async def run_sweep(args: argparse.Namespace) -> int:
         payload_arms[label] = s
         await store.close()
 
-    block = table(["chunking", "chunks", "Hit@1", "Hit@5", "MRR", "nDCG@5", "P50 ms"], rows)
+    block = table(
+        ["chunking", "chunks", "Hit@1", "Hit@5", "MRR", "nDCG@5", "P50 ms"], rows
+    )
     print("\n" + block + "\n")
     write_json(args.out, {"sweep": payload_arms})
     print(f"results → {args.out}")

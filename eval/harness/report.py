@@ -74,12 +74,19 @@ def _jsonable(value: Any) -> Any:
 
 def write_json(path: Path, payload: dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    body = {"generated_at": datetime.now(UTC).isoformat(timespec="seconds"), **_jsonable(payload)}
-    path.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    body = {
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        **_jsonable(payload),
+    }
+    path.write_text(
+        json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return path
 
 
-def write_markdown(path: Path, sections: Sequence[tuple[str, str]], *, preamble: str = "") -> Path:
+def write_markdown(
+    path: Path, sections: Sequence[tuple[str, str]], *, preamble: str = ""
+) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     parts = [preamble.rstrip(), ""] if preamble else []
     for title, body in sections:

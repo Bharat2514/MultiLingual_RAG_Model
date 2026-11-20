@@ -107,7 +107,9 @@ class GenerationReport:
 
     @property
     def citation_accuracy(self) -> float:
-        return self._mean("citation_correct", [s for s in self.answered if s.answerable])
+        return self._mean(
+            "citation_correct", [s for s in self.answered if s.answerable]
+        )
 
     @property
     def abstention_accuracy(self) -> float:

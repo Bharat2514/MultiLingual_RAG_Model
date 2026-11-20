@@ -88,7 +88,9 @@ def check_gemini() -> int:
         return 1
 
     ok(f"{len(available)} generation models available")
-    preferred = [m for m in available if m.startswith("gemini-") and "embedding" not in m]
+    preferred = [
+        m for m in available if m.startswith("gemini-") and "embedding" not in m
+    ]
     for name in sorted(preferred)[:12]:
         print(f"    {DIM}{name}{RESET}")
 
@@ -145,7 +147,9 @@ def check_gemini() -> int:
             )
             text = (response.text or "").strip().replace("\n", " ")
             if not text:
-                warn(f"{label} round-trip returned no text (finish={response.candidates})")
+                warn(
+                    f"{label} round-trip returned no text (finish={response.candidates})"
+                )
                 continue
             ok(f"{label} round-trip: {text[:110]}")
         except Exception as exc:  # noqa: BLE001

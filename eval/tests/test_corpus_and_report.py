@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from app.core.config import settings
 from harness.corpus import load_corpus, load_document
 from harness.judge import parse_judgement
 from harness.report import table
-
-from app.core.config import settings
 
 FRONT_MATTER = """---
 doc_id: sample
@@ -53,11 +52,15 @@ def test_chunk_ids_and_fingerprint_change_with_the_chunking_config():
     """Two sweep arms must not be able to read each other's vectors."""
     default = load_corpus()
     smaller = load_corpus(
-        chunking=settings.chunking.model_copy(update={"target_tokens": 250, "max_tokens": 400})
+        chunking=settings.chunking.model_copy(
+            update={"target_tokens": 250, "max_tokens": 400}
+        )
     )
     assert default.fingerprint != smaller.fingerprint
     assert len(smaller.chunks) > len(default.chunks)
-    assert {c.chunk_id for c in default.chunks}.isdisjoint(c.chunk_id for c in smaller.chunks)
+    assert {c.chunk_id for c in default.chunks}.isdisjoint(
+        c.chunk_id for c in smaller.chunks
+    )
 
 
 def test_fingerprint_is_stable_across_reloads():

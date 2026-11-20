@@ -169,4 +169,6 @@ def load_corpus(
     if not documents:
         raise FileNotFoundError(f"no corpus documents found in {directory}")
 
-    return EvalCorpus(documents=documents, chunks=chunks, session_id=session_id, chunking=cfg)
+    return EvalCorpus(
+        documents=documents, chunks=chunks, session_id=session_id, chunking=cfg
+    )
