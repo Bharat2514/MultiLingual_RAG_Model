@@ -67,7 +67,10 @@ def check_gemini() -> int:
         print(f"  {DIM}Get one at https://aistudio.google.com/apikey{RESET}")
         return 1
 
-    client = genai.Client(api_key=api_key)
+    # Same API version as the app's provider, so this check matches production.
+    client = genai.Client(
+        api_key=api_key, http_options=types.HttpOptions(api_version="v1beta")
+    )
 
     info("Listing models your key can reach...")
     try:

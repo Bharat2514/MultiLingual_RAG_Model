@@ -101,6 +101,14 @@ def _check_llm() -> ComponentHealth:
     provider = settings.llm.provider
     if provider == "mock":
         return ComponentHealth(name="llm", status="disabled", detail="mock provider")
+    if provider == "ollama":
+        # Local and keyless: report where it points; reachability is a runtime
+        # concern surfaced as LLM_UNAVAILABLE on the first failed call.
+        return ComponentHealth(
+            name="llm",
+            status="ok",
+            detail=f"ollama:{settings.llm.resolved_model} @ {settings.llm.ollama_base_url}",
+        )
     if not settings.llm_api_key:
         return ComponentHealth(
             name="llm",

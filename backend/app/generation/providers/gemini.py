@@ -7,7 +7,9 @@ Hindi and Hinglish registers this product answers in.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import random
 from collections.abc import AsyncIterator
 
 from app.core.config import settings
@@ -19,6 +21,46 @@ log = get_logger(__name__)
 
 # Reasoning depth maps onto Gemini's thinking budget (tokens).
 _EFFORT_THINKING_BUDGET = {"low": 0, "medium": 1024, "high": 8192}
+
+# Server-side conditions that a later identical request may well succeed on.
+# `google-genai` raises one `APIError` subclass for everything and puts the
+# status in the message, so this matches on the wire status rather than on an
+# exception type — which is why the strings are here and not in an isinstance
+# check. 429 is included deliberately: a burst over a per-minute quota clears on
+# its own, and the eval harness is exactly such a burst. A key with no quota at
+# all fails all the way through and still surfaces the friendly message.
+_TRANSIENT_MARKERS = (
+    "429",
+    "RESOURCE_EXHAUSTED",
+    "500",
+    "INTERNAL",
+    "502",
+    "503",
+    "UNAVAILABLE",
+    "504",
+    "DEADLINE_EXCEEDED",
+)
+
+#: First backoff, doubled per attempt. Kept short because the caller is a user
+#: waiting on an answer, not a batch job.
+_RETRY_BASE_SECONDS = 1.0
+_RETRY_MAX_SECONDS = 8.0
+
+
+def _is_transient(exc: Exception) -> bool:
+    text = f"{type(exc).__name__} {exc}".upper()
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
+async def _backoff(attempt: int) -> None:
+    """Exponential backoff with full jitter.
+
+    Jitter matters more than usual here: the evaluation harness issues its
+    requests in a tight loop, so a fixed schedule would have every retry from a
+    503 burst land on the same second and reproduce the burst.
+    """
+    delay = min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
+    await asyncio.sleep(random.uniform(0, delay))
 
 
 class GeminiProvider(LLMProvider):
@@ -37,8 +79,14 @@ class GeminiProvider(LLMProvider):
     def _get_client(self):
         if self._client is None:
             from google import genai
+            from google.genai import types
 
-            self._client = genai.Client(api_key=self._api_key)
+            # Pin v1beta: preview models (e.g. gemini-3-flash-preview) are only
+            # served there, and newer google-genai releases default to v1.
+            self._client = genai.Client(
+                api_key=self._api_key,
+                http_options=types.HttpOptions(api_version="v1beta"),
+            )
         return self._client
 
     def _config(self, system: str, max_tokens: int | None, temperature: float | None):
@@ -81,14 +129,29 @@ class GeminiProvider(LLMProvider):
         temperature: float | None = None,
     ) -> LLMResponse:
         client = self._get_client()
-        try:
-            response = await client.aio.models.generate_content(
-                model=self.model,
-                contents=user,
-                config=self._config(system, max_tokens, temperature),
-            )
-        except Exception as exc:
-            raise LLMUnavailableError(_friendly_error(exc)) from exc
+        config = self._config(system, max_tokens, temperature)
+        attempts = max(0, settings.llm.max_retries) + 1
+
+        # `LLM__MAX_RETRIES` was previously honoured only by the Anthropic
+        # provider, which passes it to its SDK client. Gemini has no equivalent
+        # knob, so a single transient 503 — which this model returns under load
+        # often enough to matter — surfaced to the user as an outage.
+        for attempt in range(attempts):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=self.model, contents=user, config=config
+                )
+                break
+            except Exception as exc:
+                if attempt + 1 >= attempts or not _is_transient(exc):
+                    raise LLMUnavailableError(_friendly_error(exc)) from exc
+                log.warning(
+                    "gemini_transient_retrying",
+                    attempt=attempt + 1,
+                    of=attempts,
+                    error=str(exc)[:160],
+                )
+                await _backoff(attempt)
 
         input_tokens, output_tokens = self._usage(response)
         finish = None
@@ -113,24 +176,39 @@ class GeminiProvider(LLMProvider):
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
         client = self._get_client()
+        config = self._config(system, max_tokens, temperature)
+        attempts = max(0, settings.llm.max_retries) + 1
         input_tokens = output_tokens = 0
 
-        try:
-            stream = await client.aio.models.generate_content_stream(
-                model=self.model,
-                contents=user,
-                config=self._config(system, max_tokens, temperature),
-            )
-            async for event in stream:
-                piece = getattr(event, "text", None)
-                if piece:
-                    yield StreamChunk(text=piece)
-                got_in, got_out = self._usage(event)
-                # Usage arrives cumulatively; keep the latest non-zero reading.
-                input_tokens = got_in or input_tokens
-                output_tokens = got_out or output_tokens
-        except Exception as exc:
-            raise LLMUnavailableError(_friendly_error(exc)) from exc
+        for attempt in range(attempts):
+            emitted = False
+            try:
+                stream = await client.aio.models.generate_content_stream(
+                    model=self.model, contents=user, config=config
+                )
+                async for event in stream:
+                    piece = getattr(event, "text", None)
+                    if piece:
+                        emitted = True
+                        yield StreamChunk(text=piece)
+                    got_in, got_out = self._usage(event)
+                    # Usage arrives cumulatively; keep the latest non-zero reading.
+                    input_tokens = got_in or input_tokens
+                    output_tokens = got_out or output_tokens
+                break
+            except Exception as exc:
+                # Only a failure *before the first token* may be retried. Once
+                # text has reached the client, restarting the call would replay
+                # the opening of the answer into the middle of the stream.
+                if emitted or attempt + 1 >= attempts or not _is_transient(exc):
+                    raise LLMUnavailableError(_friendly_error(exc)) from exc
+                log.warning(
+                    "gemini_transient_retrying_stream",
+                    attempt=attempt + 1,
+                    of=attempts,
+                    error=str(exc)[:160],
+                )
+                await _backoff(attempt)
 
         yield StreamChunk(
             text="",
@@ -147,6 +225,11 @@ class GeminiProvider(LLMProvider):
 def _friendly_error(exc: Exception) -> str:
     """Turn vendor errors into something a user can act on (NFR-5)."""
     text = str(exc)
+    if "503" in text or "UNAVAILABLE" in text:
+        return (
+            "The language model is temporarily unavailable (the provider reported high "
+            "demand). Retries were exhausted; try again in a moment."
+        )
     if "RESOURCE_EXHAUSTED" in text or "429" in text:
         return (
             "The language model is rate-limited or out of quota. "

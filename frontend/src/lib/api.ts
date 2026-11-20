@@ -1,8 +1,22 @@
 import type {
+  AnswerStyle,
   ApiError,
+  CalculationResult,
   ChatResponse,
+  ChatTurn,
+  CompareRow,
+  ConflictPair,
+  DiffResult,
   DocumentDetail,
   DocumentSummary,
+  EligibilityResult,
+  FaqItem,
+  Highlights,
+  SecurityReport,
+  SharedAnswer,
+  Timeline,
+  TimelineItem,
+  TranslationPage,
   UploadResponse,
 } from "./types";
 
@@ -39,6 +53,27 @@ async function toError(response: Response): Promise<PolyDocError> {
     },
     response.status,
   );
+}
+
+/** Fetch a binary resource (page image, calendar file) with the session header —
+ *  `<img src>` and `<a href>` cannot send one, so these go through a blob URL. */
+async function requestBlob(path: string, sessionId: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, { headers: { "X-Session-ID": sessionId } });
+  } catch {
+    throw new PolyDocError({ code: "NETWORK", message: "Could not reach the API." }, 0);
+  }
+  if (!response.ok) throw await toError(response);
+  return response.blob();
+}
+
+function json(body: unknown): RequestInit {
+  return {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
 }
 
 async function request<T>(
@@ -113,7 +148,148 @@ export const api = {
       signal: options.signal,
     });
   },
+
+  // --- trust & sharing -------------------------------------------------------
+
+  sendFeedback(sessionId: string, requestId: string, rating: 1 | -1, comment?: string) {
+    return request<{ feedback_id: string }>(
+      "/feedback",
+      sessionId,
+      json({ request_id: requestId, rating, comment: comment ?? null }),
+    );
+  },
+
+  shareAnswer(sessionId: string, answerId: string) {
+    return request<{ shared: boolean }>(`/answers/${answerId}/share`, sessionId, { method: "POST" });
+  },
+
+  async getSharedAnswer(answerId: string, sessionId?: string): Promise<SharedAnswer> {
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}/answers/${answerId}`, {
+        headers: sessionId ? { "X-Session-ID": sessionId } : {},
+      });
+    } catch {
+      throw new PolyDocError({ code: "NETWORK", message: "Could not reach the API." }, 0);
+    }
+    if (!response.ok) throw await toError(response);
+    return (await response.json()) as SharedAnswer;
+  },
+
+  // --- source viewer ---------------------------------------------------------
+
+  pageImage(sessionId: string, docId: string, page: number) {
+    return requestBlob(`/documents/${docId}/pages/${page}/image?dpi=120`, sessionId);
+  },
+
+  highlights(sessionId: string, docId: string, page: number, chunkId: string) {
+    return request<Highlights>(
+      `/documents/${docId}/pages/${page}/highlights?chunk_id=${encodeURIComponent(chunkId)}`,
+      sessionId,
+    );
+  },
+
+  chunk(sessionId: string, chunkId: string) {
+    return request<{ text: string; page_start: number; page_end: number; doc_id: string }>(
+      `/chunks/${chunkId}`,
+      sessionId,
+    );
+  },
+
+  // --- document intelligence -------------------------------------------------
+
+  deadlines(sessionId: string) {
+    return request<{ items: TimelineItem[]; counts: Record<string, number>; documents: number }>(
+      "/insights/deadlines",
+      sessionId,
+    );
+  },
+
+  deadlinesIcs(sessionId: string) {
+    return requestBlob("/insights/deadlines.ics", sessionId);
+  },
+
+  eligibilityFields() {
+    return request<{ fields: Record<string, "number" | "text" | "boolean"> }>(
+      "/insights/eligibility/fields",
+      "",
+    );
+  },
+
+  checkEligibility(sessionId: string, profile: Record<string, unknown>, docIds?: string[]) {
+    return request<{ eligible: number; checked: number; results: EligibilityResult[] }>(
+      "/insights/eligibility",
+      sessionId,
+      json({ profile, doc_ids: docIds ?? null }),
+    );
+  },
+
+  calculate(sessionId: string, question: string, inputs: Record<string, number>) {
+    return request<CalculationResult>("/insights/calculate", sessionId, json({ question, inputs }));
+  },
+
+  compare(sessionId: string, docIds: string[], attributes: string[]) {
+    return request<{ attributes: string[]; rows: CompareRow[] }>(
+      "/insights/compare",
+      sessionId,
+      json({ doc_ids: docIds, attributes }),
+    );
+  },
+
+  diff(sessionId: string, oldDocId: string, newDocId: string) {
+    return request<DiffResult>(
+      "/insights/diff",
+      sessionId,
+      json({ old_doc_id: oldDocId, new_doc_id: newDocId }),
+    );
+  },
+
+  conflicts(sessionId: string) {
+    return request<{ total: number; pairs: ConflictPair[] }>("/insights/conflicts", sessionId, json({}));
+  },
+
+  faq(sessionId: string, docId: string, language?: "hi" | "en") {
+    const query = language ? `?language=${language}` : "";
+    return request<{ items: FaqItem[]; cached: boolean; language: string }>(
+      `/documents/${docId}/faq${query}`,
+      sessionId,
+    );
+  },
+
+  timeline(sessionId: string, docId: string) {
+    return request<Timeline>(`/documents/${docId}/timeline`, sessionId);
+  },
+
+  setTimeline(
+    sessionId: string,
+    docId: string,
+    body: { effective_date: string | null; superseded_by: string | null },
+  ) {
+    return request<Timeline>(`/documents/${docId}/timeline`, sessionId, {
+      ...json(body),
+      method: "PUT",
+    });
+  },
+
+  security(sessionId: string, docId: string) {
+    return request<SecurityReport>(`/documents/${docId}/security`, sessionId);
+  },
+
+  translate(sessionId: string, docId: string, target: "hi" | "en", offset: number) {
+    return request<TranslationPage>(
+      `/documents/${docId}/translate`,
+      sessionId,
+      json({ target, offset, limit: 4 }),
+    );
+  },
 };
+
+export interface ChatOptions {
+  docIds?: string[];
+  signal?: AbortSignal;
+  history?: ChatTurn[];
+  style?: AnswerStyle;
+}
 
 // --- streaming ---------------------------------------------------------------
 
@@ -134,7 +310,7 @@ export async function streamChat(
   sessionId: string,
   query: string,
   handlers: StreamHandlers,
-  options: { docIds?: string[]; signal?: AbortSignal } = {},
+  options: ChatOptions = {},
 ): Promise<void> {
   let response: Response;
   try {
@@ -149,6 +325,8 @@ export async function streamChat(
         query,
         doc_ids: options.docIds ?? null,
         stream: true,
+        history: options.history ?? [],
+        style: options.style ?? "default",
       }),
       signal: options.signal,
     });

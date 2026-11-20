@@ -121,6 +121,10 @@ db-init: ## Create database tables
 test: ## Run unit tests
 	@cd $(BACKEND) && $(PY) -m pytest -m "not integration and not ml and not slow"
 
+.PHONY: test-eval
+test-eval: ## Unit-test the evaluation harness itself (metrics, labels, parsing)
+	@$(PY) -m pytest eval/tests -q
+
 .PHONY: test-all
 test-all: ## Run the full test suite (needs infra up)
 	@cd $(BACKEND) && $(PY) -m pytest
@@ -147,6 +151,47 @@ download-models: ## Pre-fetch bge-m3 + reranker into ./data/models (~2.3 GB)
 .PHONY: probe-crosslingual
 probe-crosslingual: ## Verify Hindi<->English retrieval with the real models
 	@$(PY) eval/crosslingual_probe.py
+
+# --- evaluation (PRD §12) ----------------------------------------------------
+
+.PHONY: eval
+eval: ## Retrieval ablation grid over the gold set; writes eval/results/latest.json
+	@$(PY) eval/run_eval.py \
+		--out eval/results/latest.json \
+		--markdown eval/results/tables.md
+
+.PHONY: eval-full
+eval-full: ## Ablations + end-to-end generation + LLM judge (needs a billed LLM key)
+	@$(PY) eval/run_eval.py --generation --judge \
+		--out eval/results/latest.json \
+		--markdown eval/results/tables.md
+
+.PHONY: eval-quick
+eval-quick: ## Retrieval on a 30-question stratified subset (~1 min)
+	@$(PY) eval/run_eval.py --limit 30 --arms dense hybrid_rerank \
+		--out eval/results/quick.json
+
+.PHONY: eval-sweep
+eval-sweep: ## Chunk size / overlap sweep — re-indexes once per configuration
+	@$(PY) eval/run_eval.py --sweep \
+		--out eval/results/sweep.json \
+		--markdown eval/results/sweep.md
+
+.PHONY: eval-validate
+eval-validate: ## Check every gold label resolves against the corpus (no models, ~2s)
+	@$(PY) eval/run_eval.py --validate-only
+
+.PHONY: eval-ci
+eval-ci: ## Regression gate: 30-question subset vs eval/results/baseline.json
+	@$(PY) eval/run_eval.py --limit 30 --arms hybrid_rerank \
+		--baseline eval/results/baseline.json --tolerance 0.03 \
+		--out eval/results/ci.json
+
+.PHONY: eval-baseline
+eval-baseline: ## Promote the current CI subset result to the gate's baseline
+	@$(PY) eval/run_eval.py --limit 30 --arms hybrid_rerank \
+		--out eval/results/baseline.json
+	@echo "✓ baseline updated — commit eval/results/baseline.json with the change that moved it"
 
 .PHONY: check-llm
 check-llm: ## Verify the LLM key, list reachable models, probe Hindi + Hinglish

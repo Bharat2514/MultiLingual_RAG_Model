@@ -11,8 +11,12 @@ import asyncio
 from app.core.logging import get_logger
 from app.db.base import Base
 from app.db.models import (  # noqa: F401 - imported for metadata registration
+    AnswerSnapshot,
     Chunk,
     Document,
+    DocumentInsight,
+    DocumentTimeline,
+    Feedback,
     IngestionJob,
     QueryLog,
     Session,

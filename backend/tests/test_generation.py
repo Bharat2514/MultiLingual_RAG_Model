@@ -114,11 +114,19 @@ class TestPromptContract:
         # Answering Devanagari to a romanized question fails language fidelity.
         assert "NOT" in prompts.build_system_prompt(Language.HINGLISH)
 
-    def test_context_is_numbered_and_source_labelled(self):
+    def test_context_is_labelled_with_passage_ids(self):
         rendered = prompts.format_context([chunk("c1", "First."), chunk("c2", "Second.")])
 
-        assert "[1] SOURCE: [policy.pdf p.4]" in rendered
-        assert "[2] SOURCE:" in rendered
+        assert "[S1] (from: policy.pdf, page 4)" in rendered
+        assert "[S2] (from:" in rendered
+        # The file and page must not appear in a form the model could copy as a
+        # citation — that is the failure the ID contract exists to remove.
+        assert "[policy.pdf p.4]" not in rendered
+
+    def test_system_prompt_asks_for_passage_ids(self):
+        system = prompts.build_system_prompt(Language.EN)
+        assert "[S2]" in system
+        assert "never write a file" in system
 
     def test_user_prompt_includes_the_question(self):
         built = prompts.build_user_prompt("What is the fee?", [chunk("c1", "The fee is 500.")])

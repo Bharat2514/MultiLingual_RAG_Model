@@ -3,7 +3,7 @@
 import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { FileText, Quote } from "lucide-react";
+import { ExternalLink, FileText, Quote } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
 import type { Citation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -22,16 +22,18 @@ import { cn } from "@/lib/utils";
  * and swaps citation markers out of text nodes for chip elements, which leaves
  * the Markdown structure intact around them.
  *
- * The model writes `[policy.pdf p.4]`, a bare `[2]`, or a group like `[1, 4]` —
- * the same forms the backend resolves, and the two must stay in step or a
+ * The backend rewrites every citation it verified to the passage-ID form —
+ * `[S2]`, or `[S1, S3]` for a group — so that is what a finished answer holds.
+ * Older forms (`[policy.pdf p.4]`, a bare `[2]`) are still recognised for
+ * answers saved before that change. The two sides must stay in step or a
  * citation the backend verified renders as literal text. Anything that does not
  * match a verified citation is left as plain text rather than made clickable:
  * an unverifiable reference must not look interactive.
  */
 
-// One entry of an index group: `2`, or `2 p.5` / `2 pp.5-7` when the model
-// half-complies with the [file p.N] instruction.
-const INDEX_ENTRY = String.raw`\d{1,2}(?:\s*pp?\.\s*\d+(?:\s*[-–]\s*\d+)?)?`;
+// One entry of an index group: `S2` (the contract), a bare `2`, or either with
+// a page — `2 p.5` / `S2 pp.5-7`.
+const INDEX_ENTRY = String.raw`(?:[Ss]\s*)?\d{1,3}(?:\s*pp?\.\s*\d+(?:\s*[-–]\s*\d+)?)?`;
 
 const CITATION_RE = new RegExp(
   // [policy.pdf p.4] / [policy.pdf pp.4-6]
@@ -41,7 +43,7 @@ const CITATION_RE = new RegExp(
   "g",
 );
 
-const INDEX_ENTRY_RE = new RegExp(String.raw`^(\d{1,2})`);
+const INDEX_ENTRY_RE = new RegExp(String.raw`^(?:[Ss]\s*)?(\d{1,3})`);
 
 /** The citations a single marker resolves to, in the order they were written. */
 function resolveMarker(
@@ -293,10 +295,13 @@ export function CitationList({
   citations,
   activeCitation,
   onSelect,
+  onOpen,
 }: {
   citations: Citation[];
   activeCitation: string | null;
   onSelect: (c: Citation) => void;
+  /** Open the citation on its page, highlighted. */
+  onOpen?: (c: Citation) => void;
 }) {
   if (!citations.length) return null;
 
@@ -337,6 +342,16 @@ export function CitationList({
                   </p>
                 ) : null}
               </button>
+              {active && onOpen ? (
+                <button
+                  type="button"
+                  onClick={() => onOpen(citation)}
+                  className="mt-1 inline-flex items-center gap-1 px-1 text-[11.5px] font-medium text-accent-ink hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" aria-hidden />
+                  View on the page
+                </button>
+              ) : null}
             </li>
           );
         })}

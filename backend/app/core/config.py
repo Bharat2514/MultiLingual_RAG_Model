@@ -208,7 +208,7 @@ class OCRSettings(BaseModel):
     max_workers: int = 4
 
 
-LLMProvider = Literal["gemini", "anthropic", "mock"]
+LLMProvider = Literal["gemini", "anthropic", "ollama", "mock"]
 
 # Fallback model per provider, used when LLM__MODEL is left unset.
 #
@@ -220,6 +220,7 @@ LLMProvider = Literal["gemini", "anthropic", "mock"]
 DEFAULT_MODELS: dict[str, str] = {
     "gemini": "gemini-3-flash-preview",
     "anthropic": "claude-opus-5",
+    "ollama": "qwen2.5:7b-instruct",
     "mock": "mock-echo",
 }
 
@@ -240,6 +241,8 @@ GEMINI_FALLBACK_ORDER: tuple[str, ...] = (
 PROVIDER_KEY_ENV: dict[str, str] = {
     "gemini": "GOOGLE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    # A local model needs no credential — that is the point of offline mode.
+    "ollama": "",
     "mock": "",
 }
 
@@ -267,6 +270,10 @@ class LLMSettings(BaseModel):
     #: Refuse to answer above this per-query cost, 0 disables (NFR-4).
     max_cost_per_query_usd: float = 0.0
 
+    # Fully offline mode (PRD OQ1): an Ollama server on this machine or LAN.
+    # Nothing — documents, prompts or answers — leaves the network.
+    ollama_base_url: str = "http://localhost:11434"
+
     @field_validator("model", mode="before")
     @classmethod
     def _strip_inline_comment(cls, v: object) -> object:
@@ -284,6 +291,41 @@ class LLMSettings(BaseModel):
     @property
     def api_key_env(self) -> str:
         return PROVIDER_KEY_ENV.get(self.provider, "")
+
+
+class TrustSettings(BaseModel):
+    """Answer-level safety and verification (beyond the citation contract)."""
+
+    #: Mask Aadhaar, PAN, phone, bank and similar identifiers in the context
+    #: sent to a *remote* LLM. The user still sees their own documents unmasked.
+    redact_pii_for_llm: bool = True
+    #: Drop retrieved passages that carry prompt-injection payloads before they
+    #: reach the model.
+    filter_injected_context: bool = True
+    #: Check every sentence of an answer against the passages it cites.
+    verify_claims: bool = True
+    #: Use the cross-encoder for claim support. Cross-lingual claims (Hindi
+    #: answer, English source) cannot be judged lexically, so without this they
+    #: are reported as `unchecked` rather than guessed at.
+    verify_with_cross_encoder: bool = False
+    support_threshold: float = 0.55
+    partial_threshold: float = 0.3
+
+
+class ConversationSettings(BaseModel):
+    #: How many prior turns the client may send for follow-up resolution.
+    max_history_turns: int = 6
+    #: Rewrite follow-ups ("aur uska penalty?") into standalone questions
+    #: before retrieval, so the search sees what the user actually means.
+    rewrite_followups: bool = True
+
+
+class CacheSettings(BaseModel):
+    """Answer cache keyed on the normalised question and the corpus state."""
+
+    enabled: bool = True
+    ttl_seconds: int = 900
+    max_entries: int = 512
 
 
 class ObservabilitySettings(BaseModel):
@@ -316,6 +358,9 @@ class Settings(BaseSettings):
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     ocr: OCRSettings = Field(default_factory=OCRSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    trust: TrustSettings = Field(default_factory=TrustSettings)
+    conversation: ConversationSettings = Field(default_factory=ConversationSettings)
+    cache: CacheSettings = Field(default_factory=CacheSettings)
     obs: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
     # Read from the conventional env var names so the vendor SDKs and our

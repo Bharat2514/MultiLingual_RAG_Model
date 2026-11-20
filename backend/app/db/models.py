@@ -6,13 +6,14 @@ chunk metadata mirror used for citation rendering and isolation tests (NFR-6).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -244,3 +245,100 @@ class QueryLog(Base, TimestampMixin):
     latency_total_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
     error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+# --- Document intelligence ---------------------------------------------------
+#
+# Everything below is a *new table* rather than new columns on an existing one.
+# Development databases are created with `create_all`, which adds missing
+# tables but never alters existing ones — a new column on `documents` would
+# break every database created before it.
+
+
+class InsightKind(StrEnum):
+    SECURITY = "security"
+    DEADLINES = "deadlines"
+    FAQ = "faq"
+    ELIGIBILITY = "eligibility"
+    TRANSLATION = "translation"
+
+
+class DocumentInsight(Base, TimestampMixin):
+    """A derived, cacheable artefact of one document (FAQ, rules, scan...).
+
+    LLM-derived insights cost a model call to produce, so they are computed
+    once and served from here until the caller asks for a refresh.
+    """
+
+    __tablename__ = "document_insights"
+    __table_args__ = (UniqueConstraint("doc_id", "kind", "variant", name="doc_insight_kind"),)
+
+    insight_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    doc_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.doc_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Distinguishes several insights of one kind, e.g. a translation target.
+    variant: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    payload: Mapped[dict] = mapped_column(JSONColumn, nullable=False)
+    model: Mapped[str | None] = mapped_column(String(128))
+
+
+class DocumentTimeline(Base, TimestampMixin):
+    """When a document is in force, and what replaced it.
+
+    Government circulars are amended constantly; without this, a question is
+    answered from whichever version happens to rank first.
+    """
+
+    __tablename__ = "document_timeline"
+
+    doc_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.doc_id", ondelete="CASCADE"), primary_key=True
+    )
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    effective_date: Mapped[date | None] = mapped_column(Date)
+    superseded_by: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(String(512))
+
+
+class Feedback(Base, TimestampMixin):
+    """A user's verdict on one answer — the raw material for new gold questions."""
+
+    __tablename__ = "feedback"
+    __table_args__ = (
+        UniqueConstraint("request_id", "session_id", name="feedback_once_per_answer"),
+        CheckConstraint("rating IN (-1, 1)", name="rating_is_vote"),
+    )
+
+    feedback_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text)
+
+
+class AnswerSnapshot(Base, TimestampMixin):
+    """An answer frozen with a fingerprint of its evidence.
+
+    The share link is the unguessable `answer_id`. Opening it re-hashes the
+    cited passages, so a reader can see whether the sources still say what
+    they said when the answer was given.
+    """
+
+    __tablename__ = "answer_snapshots"
+
+    answer_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str] = mapped_column(String(16), nullable=False)
+    grounded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: [{chunk_id, doc_id, filename, page, snippet, text_hash, context_index}]
+    citations: Mapped[list] = mapped_column(JSONColumn, nullable=False)
+    claims: Mapped[list | None] = mapped_column(JSONColumn)
+    evidence_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(128))
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

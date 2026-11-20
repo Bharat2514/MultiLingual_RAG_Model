@@ -12,6 +12,9 @@ The hard parts, and what this repo actually solves:
 | **Scanned Hindi PDFs** — no text layer means empty context | Per-page text-density routing into Tesseract (`hin`+`eng`) with deskew/denoise preprocessing |
 | **Hinglish** — romanized, code-mixed queries are out-of-distribution | Script detection → Devanagari transliteration → dual-query embedding, union before rerank |
 | **Trust** — an unsourced answer can't be acted on | Inline citations to filename + page + snippet, and an enforced "not found in your documents" path |
+| **A right citation with a wrong number** | Every answer sentence is checked against *its* cited passage; numbers must match exactly (`५०००` = `5,000`) |
+| **Documents that talk to the model** — planted "ignore previous instructions" | Ingestion scans text *and* white/microscopic PDF text in English, Hindi, Hinglish; flagged passages are withheld from the model |
+| **Answers are not actions** — readers need deadlines, eligibility, amounts | Document intelligence: deadline calendar, scheme eligibility evaluated as code, formula calculator, version diff, conflict detection |
 
 Quality is measured, not asserted: see [Evaluation](#evaluation).
 
@@ -177,7 +180,23 @@ envelope:
 | `GET` | `/documents/{id}` | Ingestion status with per-stage progress | ✅ |
 | `DELETE` | `/documents/{id}` | Delete document, file, chunks, and vectors | ✅ |
 | `POST` | `/search` | Retrieval only — for eval metrics and ablations | ✅ |
-| `POST` | `/chat` | Grounded answer + citations, optionally streamed (SSE) | ✅ |
+| `POST` | `/chat` | Grounded answer + citations, optionally streamed (SSE). Accepts `history` (follow-ups), `style: simple`, `as_of` | ✅ |
+| `GET` | `/answers/{id}` | A saved answer with a live re-check of its evidence | ✅ |
+| `POST`/`DELETE` | `/answers/{id}/share` | Make an answer readable by link / revoke it | ✅ |
+| `POST` | `/feedback` | Rate an answer | ✅ |
+| `GET` | `/feedback/export` | Rated questions as draft gold-set entries (JSONL) | ✅ |
+| `GET` | `/insights/deadlines` (`.ics`) | Deadlines, obligations, penalties — or an iCalendar file | ✅ |
+| `POST` | `/insights/eligibility` | Check a profile against every scheme's extracted rules | ✅ |
+| `POST` | `/documents/{id}/eligibility/rules` | Extract (and cache) a scheme's rules | ✅ |
+| `POST` | `/insights/calculate` | Compute an amount from a formula in the documents | ✅ |
+| `POST` | `/insights/compare` | Comparison table across documents, every cell cited | ✅ |
+| `POST` | `/insights/diff` | Clause-level changes between two versions | ✅ |
+| `POST` | `/insights/conflicts` | Near-identical clauses that disagree on a number | ✅ |
+| `GET`/`PUT` | `/documents/{id}/timeline` | Effective date and superseding document | ✅ |
+| `GET` | `/documents/{id}/faq` | Generated, cited FAQ (Hindi or English) | ✅ |
+| `POST` | `/documents/{id}/translate` | Side-by-side translation, a few passages at a time | ✅ |
+| `GET` | `/documents/{id}/security` | Planted-instruction / hidden-text scan | ✅ |
+| `GET` | `/documents/{id}/pages/{n}/image`, `/highlights` | Rendered page + where a cited passage sits on it | ✅ |
 
 Every request is scoped by an `X-Session-ID` header. That scope is applied
 **inside the database query**, not as a check afterwards, so a forgotten filter
@@ -206,6 +225,9 @@ out-of-scope questions.
 Ablations reported alongside: dense-only vs hybrid vs hybrid+rerank, with/without
 Hinglish normalization, chunk-size sweep, and an embedding-model A/B.
 
+Current measured numbers, and what they do and don't show, are in
+[`docs/EVALUATION.md`](docs/EVALUATION.md).
+
 ---
 
 ## Build status
@@ -218,6 +240,7 @@ Hinglish normalization, chunk-size sweep, and an embedding-model A/B.
 | 4 | Query & generation: Hinglish dual-query, grounding contract, citations, SSE streaming | ✅ |
 | 5 | Next.js UI: upload + live ingestion progress, streamed chat, clickable citations | ✅ |
 | 6 | Eval harness, ablations, observability, docs | ⏳ |
+| 7 | Trust layer & document intelligence (below) | ✅ |
 
 ---
 
@@ -379,6 +402,57 @@ Startup warmup is why the "cold" column improves: Metal compiles its kernels on
 first use, so the models are exercised during app startup and the first real
 query no longer pays a 40x penalty.
 
+## Beyond question answering
+
+Retrieval answers the question asked. These features act on the documents
+themselves, and keep the same contract: every value shows the page it came from.
+Deterministic where the problem allows it; where a model has to *read*, it
+returns structured JSON with a verbatim quote, and the quote is checked against
+the source before the value is shown — unverifiable values are marked, not hidden.
+
+**Trust layer (every chat answer)**
+
+- **Claim check** — each sentence is verified against the passage *it* cites.
+  Numbers are compared exactly and language-agnostically; wording by lexical
+  overlap, or by the cross-encoder when enabled (the only way to check a Hindi
+  answer against an English source — without it such claims say `unchecked`
+  rather than guessing).
+- **Injection defence** — ingestion scans every chunk and the PDF's rendering
+  data (white or sub-2pt text) for instructions aimed at the model, in English,
+  Hindi and Hinglish. At query time, flagged passages are withheld.
+- **PII masking** — Aadhaar (Verhoeff-validated), PAN, phone, IFSC, e-mail, bank
+  account and voter ID are masked in the context sent to a *remote* LLM.
+- **Explained abstention** — "not found" says how many documents were searched
+  and which passage came closest.
+- **Verifiable share links** — answers are stored with a SHA-256 of each cited
+  passage; opening a shared link re-hashes them and reports *intact*, *changed*
+  or *deleted*.
+- **Multi-turn** — follow-ups ("aur uska penalty?") are rewritten into a
+  standalone question *before* retrieval, replying in the register the user typed.
+- **Plain-language mode**, **voice input/read-aloud** (browser Web Speech API,
+  `hi-IN`/`en-IN`), **thumbs up/down** exported as draft gold questions, and an
+  **answer cache** keyed on the question *and* a fingerprint of the corpus, so a
+  new upload can never be answered from a stale entry.
+
+**Document tools (the "Document tools" tab)**
+
+| Tool | How it works |
+|---|---|
+| Deadlines → calendar | Rule-based date extraction (Indian day-first, Hindi month names, Devanagari digits); each date classified from the words *around it*, so "submit by 15.04.2025 per letter dated 01.01.2025" yields one deadline and one issue date. `.ics` export. |
+| Eligibility checker | The model extracts each condition as a typed rule (field, operator, value, quote) once per scheme; your profile is evaluated **as code**. Missing facts yield "need more details", never a guess. |
+| Formula calculator | The model transcribes the formula; an AST-restricted evaluator computes it and shows the working. |
+| Compare | One row per document, one cited cell per attribute. |
+| Changes / conflicts | Sentence-level alignment with paired edits, so a reworded clause reads as *modified*, and "20 → 15 years" is called out as a number change. The same matcher flags documents that disagree. |
+| In force | Mark a circular as superseded or set its effective date; chat then answers from documents in force (or `as_of` a past date). The document's own "w.e.f." date is offered as a suggestion. |
+| FAQ, bilingual reader, security scan | Generated FAQ with verified quotes; side-by-side Hindi↔English translation; the ingestion scan result. |
+
+**Source viewer** — "View on the page" renders the cited PDF page with the passage
+highlighted: text-layer search in five-word windows, or Tesseract word boxes on
+scanned pages.
+
+**Offline mode** — `LLM__PROVIDER=ollama` runs generation on a local model.
+Embeddings and reranking are already local, so nothing leaves the machine.
+
 ## Interface
 
 A two-column workspace: documents on the left, conversation on the right.
@@ -419,7 +493,9 @@ backend/
     api/v1/       routers
     ingestion/    parsing, OCR, cleaning, chunking      (Batch 2)
     retrieval/    embeddings, vector store, rerank      (Batch 3)
-    generation/   prompt contract, LLM providers        (Batch 4)
+    generation/   prompt contract, LLM providers, follow-up rewriting, answer cache
+    intelligence/ claim check, PII, injection scan, deadlines, eligibility,
+                  formula calculator, version diff, highlighting
     workers/      Celery app and tasks                  (Batch 2)
   tests/
 frontend/
@@ -438,3 +514,9 @@ Documents are scoped per session/user and that filter is enforced at the
 retrieval layer, not just the API surface (isolation tests ship in Batch 3).
 Secrets come from the environment only. Hard delete removes the file, its rows,
 and its vectors. Aligned with India DPDP Act principles; see §16 of the PRD.
+
+Personal identifiers are masked before context reaches a remote LLM, and
+`LLM__PROVIDER=ollama` keeps generation on the machine entirely. Uploaded
+documents are scanned for planted model instructions and hidden text, and
+flagged passages never reach the model. Answer snapshots are private until
+explicitly shared; a share link is an unguessable capability and can be revoked.

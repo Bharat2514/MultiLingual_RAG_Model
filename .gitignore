@@ -50,3 +50,11 @@ eval/.cache/
 Thumbs.db
 .idea/
 *.swp
+
+# Evaluation output. `baseline.json` is committed on purpose — it is the
+# reference the CI regression gate compares against.
+eval/results/*
+!eval/results/baseline.json
+
+gitSetup/
+resdocs/

@@ -155,7 +155,12 @@ def sync_record_stage(
         job.status = JobStatus.SUCCEEDED
         job.finished_at = now
         if job.started_at:
-            job.duration_ms = (now - job.started_at).total_seconds() * 1000
+            # SQLite hands timestamps back naive even for timezone-aware
+            # columns; Postgres does not. They are written as UTC either way.
+            started = job.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=UTC)
+            job.duration_ms = (now - started).total_seconds() * 1000
     elif status == "failed":
         job.status = JobStatus.FAILED
         job.finished_at = now

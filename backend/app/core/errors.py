@@ -32,6 +32,9 @@ class ErrorCode(StrEnum):
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     UNAUTHORIZED = "UNAUTHORIZED"
     FORBIDDEN = "FORBIDDEN"
+    INVALID_MODEL_OUTPUT = "INVALID_MODEL_OUTPUT"
+    UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION"
+    ANSWER_NOT_FOUND = "ANSWER_NOT_FOUND"
     INTERNAL = "INTERNAL"
 
 
@@ -99,6 +102,12 @@ class DocumentNotFoundError(PolyDocError):
     code = ErrorCode.DOCUMENT_NOT_FOUND
     status_code = 404
     message = "Document not found."
+
+
+class NotFoundError(PolyDocError):
+    code = ErrorCode.NOT_FOUND
+    status_code = 404
+    message = "Not found."
 
 
 class DocumentNotReadyError(PolyDocError):
@@ -171,6 +180,29 @@ class VectorStoreUnavailableError(PolyDocError):
     code = ErrorCode.VECTOR_STORE_UNAVAILABLE
     status_code = 503
     message = "The vector store is temporarily unavailable."
+
+
+class InvalidModelOutputError(PolyDocError):
+    """The model answered, but not in the structure the feature needs.
+
+    Raised instead of guessing: an eligibility rule or formula that had to be
+    "repaired" from malformed output is not one a user should act on."""
+
+    code = ErrorCode.INVALID_MODEL_OUTPUT
+    status_code = 502
+    message = "The language model returned output that could not be used."
+
+
+class UnsupportedOperationError(PolyDocError):
+    code = ErrorCode.UNSUPPORTED_OPERATION
+    status_code = 422
+    message = "This operation is not supported for this document."
+
+
+class AnswerNotFoundError(PolyDocError):
+    code = ErrorCode.ANSWER_NOT_FOUND
+    status_code = 404
+    message = "This answer link does not exist or has been revoked."
 
 
 class InternalError(PolyDocError):

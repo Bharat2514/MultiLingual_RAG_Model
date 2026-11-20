@@ -45,8 +45,17 @@ RUN mkdir -p /app/backend/app && touch /app/backend/app/__init__.py \
     && pip install --upgrade pip \
     && pip install -e /app/backend
 
+# --- ml ----------------------------------------------------------------------
+# CPU torch wheels: the container never sees Apple MPS, and CUDA wheels would
+# add several GB for nothing. Both api (query embedding + rerank) and worker
+# (ingestion embedding) load bge-m3, so both need this layer.
+FROM deps AS ml
+
+RUN pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.4" \
+    && pip install "FlagEmbedding>=1.3" "transformers>=4.45"
+
 # --- api ---------------------------------------------------------------------
-FROM deps AS api
+FROM ml AS api
 
 COPY --chown=polydoc:polydoc backend /app/backend
 RUN mkdir -p /app/data/uploads /app/data/models && chown -R polydoc:polydoc /app/data
@@ -61,12 +70,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
 
 # --- worker ------------------------------------------------------------------
-# CPU torch wheels: the container never sees Apple MPS, and CUDA wheels would
-# add several GB for nothing.
-FROM deps AS worker
-
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch>=2.4 \
-    && pip install "FlagEmbedding>=1.3" "transformers>=4.45"
+FROM ml AS worker
 
 COPY --chown=polydoc:polydoc backend /app/backend
 RUN mkdir -p /app/data/uploads /app/data/models && chown -R polydoc:polydoc /app/data

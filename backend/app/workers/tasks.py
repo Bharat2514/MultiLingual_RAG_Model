@@ -15,7 +15,7 @@ from celery import shared_task
 
 from app.core.errors import ErrorCode, PolyDocError
 from app.core.logging import get_logger
-from app.db.models import DocumentStatus, JobStage
+from app.db.models import DocumentInsight, DocumentStatus, InsightKind, JobStage
 from app.db.session import sync_session_scope
 from app.ingestion.pipeline import run_pipeline
 from app.ingestion.storage import get_object_store
@@ -48,6 +48,62 @@ def _index_chunks(doc_id: str, points: list[PendingChunk], on_stage) -> int:
     on_stage(JobStage.INDEX, "succeeded", {"vectors": indexed, "duration_ms": elapsed})
     log.info("chunks_indexed", doc_id=doc_id, vectors=indexed, duration_ms=elapsed)
     return indexed
+
+
+def _security_scan(db, document, rows, path, kind: FileKind) -> None:
+    """Flag planted instructions and hidden text (see app.intelligence.injection).
+
+    Best effort by design: a scanner bug must never fail an otherwise good
+    ingestion. Query-time filtering is the second line of defence.
+    """
+    from app.intelligence import injection
+
+    try:
+        findings = []
+        for row in rows:
+            findings += injection.scan_text(row.text, page=row.page_start, chunk_id=row.chunk_id)
+        if kind == FileKind.PDF:
+            findings += injection.scan_pdf_hidden_text(path)
+        payload = injection.summarize(findings)
+    except Exception:
+        log.warning("security_scan_failed", doc_id=document.doc_id, exc_info=True)
+        return
+
+    # A savepoint, so a failed write rolls back only itself and the chunks
+    # persisted in this same transaction still commit.
+    try:
+        with db.begin_nested():
+            _save_security(db, document, payload)
+        if payload["level"] != "clean":
+            log.warning(
+                "document_security_findings", doc_id=document.doc_id, level=payload["level"]
+            )
+    except Exception:
+        log.warning("security_scan_save_failed", doc_id=document.doc_id, exc_info=True)
+
+
+def _save_security(db, document, payload: dict) -> None:
+    from sqlalchemy import select
+
+    insight = db.scalar(
+        select(DocumentInsight).where(
+            DocumentInsight.doc_id == document.doc_id,
+            DocumentInsight.kind == InsightKind.SECURITY,
+            DocumentInsight.variant == "",
+        )
+    )
+    if insight is None:
+        db.add(
+            DocumentInsight(
+                doc_id=document.doc_id,
+                session_id=document.session_id,
+                kind=str(InsightKind.SECURITY),
+                variant="",
+                payload=payload,
+            )
+        )
+    else:
+        insight.payload = payload
 
 
 # Which document status each pipeline stage corresponds to, so the status field
@@ -108,6 +164,7 @@ def ingest_document_sync(doc_id: str) -> dict:
                 )
                 for row in rows
             ]
+            _security_scan(db, document, rows, path, kind)
 
         _index_chunks(doc_id, points, on_stage)
 

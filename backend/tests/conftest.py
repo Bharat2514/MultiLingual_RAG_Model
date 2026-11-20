@@ -20,6 +20,13 @@ os.environ.setdefault("OBS__LOG_LEVEL", "WARNING")
 os.environ.setdefault("OBS__METRICS_ENABLED", "false")
 # Tests must not load 2.3 GB of weights during app startup.
 os.environ.setdefault("RETRIEVAL__WARMUP_ON_STARTUP", "false")
+# Tests reuse the same question across different stubbed corpora; a shared
+# answer cache would leak one test's answer into the next. The cache has its
+# own tests, which switch it on explicitly.
+os.environ.setdefault("CACHE__ENABLED", "false")
+# A developer's .env may switch the cross-encoder verifier on; tests must not
+# load the reranker model, and the claim tests assert the lexical behaviour.
+os.environ.setdefault("TRUST__VERIFY_WITH_CROSS_ENCODER", "false")
 
 import httpx
 from asgi_lifespan import LifespanManager  # type: ignore[import-not-found]

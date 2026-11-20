@@ -1,0 +1,29 @@
+// Out-of-scope questions (§12.1). Deliberately *topically adjacent* rather than
+// absurd: "what is the capital of France" only proves the model can refuse an
+// obvious non sequitur. "What is the notice period for resignation?" sounds
+// exactly like the handbook it is not in, and that is the failure mode that
+// actually reaches users.
+{"id":"ad-001","query":"What is the notice period for resignation?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false,"notes":"Handbook covers probation and discipline but never notice period."}
+{"id":"ad-002","query":"What is the annual bonus percentage paid to employees?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-003","query":"How much is the company health insurance cover per family?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-004","query":"What is the stock option vesting schedule?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-005","query":"Who is the current Chief Executive Officer of the company?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-006","query":"What penalty applies for late payment of the tender document fee?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false,"notes":"The NIT lists many penalties, none for this."}
+{"id":"ad-007","query":"How many zones does the Indore Municipal Corporation have in total?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-008","query":"What is the GST rate applicable to the solid waste contract?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-009","query":"Which endpoint detection product does the company use?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-010","query":"What is the recovery time objective for the production database?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false}
+{"id":"ad-011","query":"What penalty does an employee face for losing a company laptop?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false,"notes":"Reporting duty is stated; a penalty is not. Replaced an earlier log-retention question once the privacy notice (a distractor) gave a retention period a judge could accept."}
+{"id":"ad-012","query":"राष्ट्रीय पेंशन प्रणाली में अंशदान की दर क्या है?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false,"notes":"Circular names NPS but never states contribution rates."}
+{"id":"ad-013","query":"पेंशनभोगियों के लिए चिकित्सा प्रतिपूर्ति की दर क्या है?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-014","query":"सातवें वेतनमान में मूल वेतन का न्यूनतम स्तर क्या है?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-015","query":"शिक्षकों की भर्ती के लिए पात्रता परीक्षा कब आयोजित होगी?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-016","query":"मध्याह्न भोजन की प्रति विद्यार्थी लागत कितनी है?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-017","query":"गेहूँ का न्यूनतम समर्थन मूल्य इस वर्ष कितना है?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-018","query":"फसल बीमा योजना का प्रीमियम कितना देना होगा?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false}
+{"id":"ad-019","query":"सोलर पंप पर कितना अनुदान मिलेगा?","lang":"hi","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hi","answerable":false,"notes":"Diesel and electric pumps are listed; solar is not."}
+{"id":"ad-020","query":"notice period kitna hai resign karne par","lang":"hinglish","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hinglish","answerable":false}
+{"id":"ad-021","query":"appraisal cycle kab hota hai aur rating kaise milti hai","lang":"hinglish","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hinglish","answerable":false}
+{"id":"ad-022","query":"office mein parking ka rule kya hai","lang":"hinglish","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hinglish","answerable":false}
+{"id":"ad-023","query":"scholarship ke liye kaun apply kar sakta hai","lang":"hinglish","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"hinglish","answerable":false}
+{"id":"ad-024","query":"What is the capital of France?","lang":"en","kind":"adversarial","doc":null,"anchors":[],"answer":null,"expect_language":"en","answerable":false,"notes":"The control: the model knows this and must still refuse."}

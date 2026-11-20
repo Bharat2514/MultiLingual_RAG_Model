@@ -1,0 +1,143 @@
+# Retrieval regression gate.
+#
+# Runs the shipped configuration over a 30-question stratified subset of the gold
+# set and fails the build if Recall@5 drops more than three points below
+# `eval/results/baseline.json`. This is what stops a "small" change to fusion
+# weights, chunking or the query analyser from quietly costing recall.
+#
+# Why it is a separate workflow from `ci.yml`: this job downloads bge-m3 and the
+# cross-encoder (~4.6 GB) and runs them on CPU. On a warm cache it takes a few
+# minutes; on a cold one, considerably longer. Nobody should wait on that to find
+# out they misspelled a variable.
+#
+# Why three points: the subset is 30 questions, so one question is 3.3 points.
+# A tolerance below that would fail on a single question flipping, which happens
+# for reasons unrelated to quality — a tie broken differently after a torch
+# upgrade, say. A tolerance above it would let a real one-question regression
+# through. Three points is the tightest gate the sample size supports.
+#
+# The baseline must be produced on the same platform as the gate. This job runs
+# fp32 on CPU; a developer's Mac runs fp16 on Metal, and a borderline question
+# can rank differently between them. To refresh the baseline, run this workflow
+# with `full: false` via workflow_dispatch, download the `eval-results` artifact,
+# and commit its `ci.json` as `eval/results/baseline.json` — do not regenerate it
+# locally with `make eval-baseline` and commit that.
+name: Eval gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/retrieval/**"
+      - "backend/app/ingestion/chunking.py"
+      - "backend/app/ingestion/cleaning.py"
+      - "backend/app/generation/query.py"
+      - "backend/app/generation/intent.py"
+      - "backend/app/nlp/**"
+      - "backend/app/core/config.py"
+      - "eval/**"
+      - ".github/workflows/eval-gate.yml"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Run the full gold set and every ablation arm"
+        type: boolean
+        default: false
+
+concurrency:
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Recall@5 regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.18.1
+        ports:
+          - 6333:6333
+
+    env:
+      QDRANT__URL: http://localhost:6333
+      EMBEDDING__DEVICE: cpu
+      RERANKER__DEVICE: cpu
+      # fp16 is a GPU optimisation; on CPU it is slower and less accurate, and on
+      # some torch builds it is simply unimplemented.
+      EMBEDDING__USE_FP16: "false"
+      RERANKER__USE_FP16: "false"
+      EMBEDDING__CACHE_DIR: ${{ github.workspace }}/data/models
+      LLM__PROVIDER: mock
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install torch (CPU wheels)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install backend with ML and eval extras
+        run: pip install -e "./backend[dev,ml,eval]"
+
+      # Keyed on the model names so a model swap invalidates the cache rather
+      # than silently evaluating the new config against the old weights.
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: data/models
+          key: hf-bge-m3-reranker-v2-m3-v1
+
+      - name: Pre-fetch models
+        run: python scripts/download_models.py
+
+      - name: Wait for Qdrant
+        run: |
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:6333/healthz && exit 0
+            sleep 2
+          done
+          echo "Qdrant did not become healthy" >&2
+          exit 1
+
+      - name: Validate the gold set
+        run: python eval/run_eval.py --validate-only
+
+      - name: Run the gate
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.full }}
+        run: |
+          python eval/run_eval.py \
+            --limit 30 --arms hybrid_rerank \
+            --baseline eval/results/baseline.json --tolerance 0.03 \
+            --out eval/results/ci.json | tee eval-gate.txt
+
+      - name: Run the full grid
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
+        run: |
+          python eval/run_eval.py \
+            --out eval/results/ci.json \
+            --markdown eval/results/tables.md | tee eval-gate.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Retrieval eval'
+            echo '```'
+            cat eval-gate.txt 2>/dev/null || echo 'the run produced no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            eval/results/ci.json
+            eval/results/tables.md
+          if-no-files-found: ignore

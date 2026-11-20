@@ -1,0 +1,92 @@
+# Fast checks: everything that does not need a 4.6 GB model download.
+#
+# The retrieval regression gate lives in `eval-gate.yml` and runs separately,
+# because it needs the real bge-m3 weights and a Qdrant service. Keeping the two
+# apart means a typo still fails in ninety seconds instead of waiting behind a
+# model download.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  backend:
+    name: Backend — lint, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install backend (no ML extras)
+        run: pip install -e "./backend[dev]"
+
+      - name: Ruff — lint
+        run: ruff check backend scripts eval
+
+      - name: Ruff — format
+        run: ruff format --check backend scripts eval
+
+      - name: mypy
+        run: mypy app
+        working-directory: backend
+
+      - name: Unit tests
+        run: pytest -m "not integration and not ml and not slow"
+        working-directory: backend
+
+  eval-harness:
+    name: Eval harness — self-tests and gold-set validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install backend (no ML extras)
+        run: pip install -e "./backend[dev]"
+
+      # Catches a mistyped anchor, a renamed corpus document, or a chunker change
+      # that splits an answer sentence — in seconds, and without a GPU. Without
+      # this, all three surface later as an unexplained recall drop in the gate
+      # job, where they look like a retrieval regression.
+      - name: Validate the gold set against the corpus
+        run: python eval/run_eval.py --validate-only
+
+      - name: Harness unit tests
+        run: pytest eval/tests -q
+
+  frontend:
+    name: Frontend — lint, types, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build

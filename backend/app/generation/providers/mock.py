@@ -15,7 +15,8 @@ from collections.abc import AsyncIterator
 from app.generation.prompts import INSUFFICIENT_CONTEXT
 from app.generation.providers.base import LLMProvider, LLMResponse, StreamChunk
 
-_SOURCE_RE = re.compile(r"SOURCE:\s*(\[[^\]]+\])")
+# The passage-ID label that opens each CONTEXT passage: "[S1] (from: …)".
+_SOURCE_RE = re.compile(r"^(\[S\d+\]) \(from:", re.MULTILINE)
 
 
 class MockLLMProvider(LLMProvider):
